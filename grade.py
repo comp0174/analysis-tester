@@ -1,5 +1,5 @@
 from pathlib import Path
-import sys
+import os
 from collections import namedtuple
 from subprocess import run, DEVNULL, PIPE
 import tempfile
@@ -8,7 +8,8 @@ import json
 from subprocess import CalledProcessError
 from json import JSONDecodeError
 import argparse
-
+import contextlib
+import math
 
 # Usage:
 #
@@ -29,11 +30,19 @@ analyses = [
     'dva_il2',
     'nmoc_il1',
     'nmoc_il2',
-    'rd_il1',
-    'rd_il2',
     'uv_il1',
     'uv_il2'
 ]
+
+@contextlib.contextmanager
+def cd(path):
+   """Changes working directory and returns to previous on exit."""
+   old_path = Path.cwd()
+   os.chdir(path)
+   try:
+       yield
+   finally:
+       os.chdir(old_path)
 
 Test = namedtuple('Test', 'file positive negative')
 
@@ -66,7 +75,7 @@ def load_test(analysis_dir, test_id):
 TestResult = namedtuple('TestResult', 'false_alarms missed_violations')
 
 def is_passing(test_result):
-    return len(test_result.missed_violations) == 0 and \
+    return test_result and len(test_result.missed_violations) == 0 and \
         len(test_result.false_alarms) == 0
 
 def run_test(script, test):
@@ -103,6 +112,76 @@ def evaluate(input_dir, tests):
         result[analysis] = test_results
     return result
 
+def generate_cfg(source_file, pdf_file):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        cmd = ['python3', 'analyse.py', '--output-edb', str(tmpdirname), str(source_file)]
+        out = run(cmd, check=True, stdout=DEVNULL, stderr=DEVNULL)
+        generated_pdf = Path(tmpdirname) / 'cfg.gv.pdf'
+        shutil.copy(generated_pdf, pdf_file)
+
+def tex_str(s):
+    return s.replace('_', '\_')
+
+def compute_mark(results):
+    mark = 41.0
+    for analysis, test_results in results.items():
+        if len(test_results) == 0:
+            continue
+        mark += 5.0 * (len(list(filter(is_passing, test_results.values()))) / len(test_results))
+    return math.ceil(mark)
+
+def generate_report(results, tests, report_pdf):
+    failure_count = 0
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        with (Path(tmpdirname) / 'report.tex').open(mode='w') as f:
+            f.write(tex_str('\documentclass[11pt,a4paper]{article}\n'))
+            f.write(tex_str('\\usepackage{graphics}\n'))
+            f.write(tex_str('\\usepackage{listings}\n'))
+            f.write(tex_str('\\begin{document}\n'))
+            f.write(tex_str('\section*{Your mark is ' + str(compute_mark(results)) + '}\n\n'))
+            for analysis, test_results in results.items():
+                for id, test_result in test_results.items():
+                    s = f"{analysis}/test {id}:"
+                    fa = []
+                    mv = []
+                    fail = False
+                    if not test_result:
+                        s += "\quad FAIL"
+                        fail = True
+                    else:
+                        if is_passing(test_result):
+                            s += "\quad PASS"
+                        else:
+                            s += "\quad FAIL"
+                            fail = True
+                            fa = test_result.false_alarms
+                            mv = test_result.missed_violations
+                    if fail:
+                        failure_count += 1
+                        f.write(tex_str('\subsubsection*{' + s + '}\n\n'))
+                    if fa or mv:
+                        f.write(tex_str('\\begin{itemize}\n'))
+                    if fa:
+                        for i in fa:
+                            f.write(tex_str('\item False alarm: \lstinline{' + str(i) + '}\n'))
+                    if mv:
+                        for i in mv:
+                            f.write(tex_str('\item Missed violation: \lstinline{' + str(i) + '}\n'))
+                    if fa or mv:
+                        f.write(tex_str('\end{itemize}\n\n'))
+                    if fa or mv:
+                        figure_file = Path(tmpdirname) / (str(failure_count) + '.pdf')
+                        generate_cfg(tests[analysis][id].file, figure_file)
+                        f.write('\includegraphics{' + str(figure_file) + '}\n\n')
+            if failure_count == 0:
+                f.write(tex_str('All tests pass!\n'))
+            f.write(tex_str('\end{document}\n'))
+        shutil.copy(Path(tmpdirname) / 'report.tex', report_pdf)
+        with cd(tmpdirname):
+            cmd = ['pdflatex', '-interaction=nonstopmode', 'report.tex']
+            out = run(cmd, check=True, stdout=DEVNULL, stderr=DEVNULL)
+        shutil.copy(Path(tmpdirname) / 'report.pdf', report_pdf)
+
 def pprint(results):
     for analysis, test_results in results.items():
         for id, test_result in test_results.items():
@@ -130,3 +209,6 @@ if __name__ == "__main__":
     tests = load_tests(test_dir)
     results = evaluate(input_dir, tests)
     pprint(results)
+    print('mark:' + str(compute_mark(results)))
+    if args.report:
+        generate_report(results, tests, args.report)
