@@ -1,0 +1,10 @@
+.decl label(L:symbol)
+.input label
+
+.decl variable(V:symbol)
+.input variable
+
+.decl result(V: symbol, L:symbol)
+.output result
+ 
+result(V, L) :- variable(V), label(L).

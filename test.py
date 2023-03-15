@@ -13,7 +13,7 @@ import math
 
 # Usage:
 #
-#   python grade.py <test dir> <input dir> <report file>
+#   python test.py <test dir> <input dir> [--report <report file>]
 #
 # Assume the following input structure:
 #   <input dir>/<analysis id>.dl
@@ -122,14 +122,6 @@ def generate_cfg(source_file, pdf_file):
 def tex_str(s):
     return s.replace('_', '\_')
 
-def compute_mark(results):
-    mark = 41.0
-    for analysis, test_results in results.items():
-        if len(test_results) == 0:
-            continue
-        mark += 5.0 * (len(list(filter(is_passing, test_results.values()))) / len(test_results))
-    return math.ceil(mark)
-
 def generate_report(results, tests, report_pdf):
     failure_count = 0
     with tempfile.TemporaryDirectory() as tmpdirname:
@@ -138,7 +130,6 @@ def generate_report(results, tests, report_pdf):
             f.write(tex_str('\\usepackage{graphics}\n'))
             f.write(tex_str('\\usepackage{listings}\n'))
             f.write(tex_str('\\begin{document}\n'))
-            f.write(tex_str('\section*{Your mark is ' + str(compute_mark(results)) + '}\n\n'))
             for analysis, test_results in results.items():
                 for id, test_result in test_results.items():
                     s = f"{analysis}/test {id}:"
@@ -199,7 +190,7 @@ def pprint(results):
             print(s)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='COMP0174 Grader.')
+    parser = argparse.ArgumentParser(description='COMP0174 Tester.')
     parser.add_argument('tests', metavar='DIR', help='test directory')
     parser.add_argument('submission', metavar='DIR', help='submission directory')
     parser.add_argument('--report', metavar='FILE', help='pdf report')
@@ -209,6 +200,5 @@ if __name__ == "__main__":
     tests = load_tests(test_dir)
     results = evaluate(input_dir, tests)
     pprint(results)
-    print('mark:' + str(compute_mark(results)))
     if args.report:
         generate_report(results, tests, args.report)
