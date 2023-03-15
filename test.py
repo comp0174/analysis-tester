@@ -167,7 +167,6 @@ def generate_report(results, tests, report_pdf):
             if failure_count == 0:
                 f.write(tex_str('All tests pass!\n'))
             f.write(tex_str('\end{document}\n'))
-        shutil.copy(Path(tmpdirname) / 'report.tex', report_pdf)
         with cd(tmpdirname):
             cmd = ['pdflatex', '-interaction=nonstopmode', 'report.tex']
             out = run(cmd, check=True, stdout=DEVNULL, stderr=DEVNULL)
