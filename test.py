@@ -172,6 +172,12 @@ def generate_report(results, tests, report_pdf):
             out = run(cmd, check=True, stdout=DEVNULL, stderr=DEVNULL)
         shutil.copy(Path(tmpdirname) / 'report.pdf', report_pdf)
 
+
+def generate_json_report(results, tests, report_json):
+   with open(report_json, 'w', encoding='utf-8') as f:
+      json.dump(results, f, ensure_ascii=False, indent=4)
+   
+
 def pprint(results):
     for analysis, test_results in results.items():
         for id, test_result in test_results.items():
@@ -188,10 +194,12 @@ def pprint(results):
                         s += f"\tMV: {test_result.missed_violations}"
             print(s)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='COMP0174 Tester.')
     parser.add_argument('tests', metavar='DIR', help='test directory')
     parser.add_argument('submission', metavar='DIR', help='submission directory')
+    parser.add_argument('--json-report', metavar='FILE', help='json report')
     parser.add_argument('--report', metavar='FILE', help='pdf report')
     args = parser.parse_args()
     test_dir = Path(args.tests)
@@ -199,5 +207,7 @@ if __name__ == "__main__":
     tests = load_tests(test_dir)
     results = evaluate(input_dir, tests)
     pprint(results)
+    if args.json_report:
+        generate_json_report(results, tests, args.json_report)
     if args.report:
         generate_report(results, tests, args.report)
